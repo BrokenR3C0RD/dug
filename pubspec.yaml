@@ -1,0 +1,25 @@
+name: dug
+description: A starting point for Dart libraries or applications.
+version: 1.0.0
+# repository: https://github.com/my_org/my_repo
+
+environment:
+  sdk: ^3.9.1
+
+# Add regular dependencies here.
+dependencies:
+  source_span: ^1.10.1
+  jsparser: ^2.0.4
+  unicode: ^0.3.1
+  string_scanner: ^1.4.1
+  collection: ^1.19.1
+  # path: ^1.9.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  path: ^1.9.1
+  test: ^1.25.6
+
+dependency_overrides:
+  jsparser:
+    path: ../ensemble/modules/parsejs_null_safety
