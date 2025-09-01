@@ -38,31 +38,28 @@ class LexException implements Exception {
 class Lexer {
   final SpanScanner _scanner;
   final bool _interpolated;
+  final SourceFile file;
 
-  final _stateStack = <LineScannerState>[];
   final _tokens = <Token>[];
   final _whitespaceRe = RegExp(r'[ \n\t]');
   final _quoteRe = RegExp('[\'"]');
-  final _newlineRe = RegExp('\n');
 
   RegExp? _indentRe;
-  int? _indents;
 
   List<Token> get tokens => List.unmodifiable(_tokens);
 
-  var _indentStack = <int>[0];
+  final _indentStack = <int>[0];
   var _ended = false;
   var _interpolationAllowed = true;
 
-  Lexer(this._scanner, {bool interpolated = false}) : _interpolated = interpolated {
-  }
+  Lexer(this._scanner, {bool interpolated = false}) : _interpolated = interpolated, file = _scanner.emptySpan.file;
 
   Lexer.fromString(String source, {bool interpolated = false}) : this(SpanScanner(source), interpolated: interpolated);
   Lexer.fromFile(File file) : this(SpanScanner(file.readAsStringSync(), sourceUrl: file.uri));
 
   T? _scan<T extends Token>(Pattern pattern, _TokenCons<T> type) {
     if (_scanner.scan(pattern)) {
-      return type(_scanner.lastSpan!);
+      return type(_scanner.lastSpan!.trim());
     }
     return null;
   }

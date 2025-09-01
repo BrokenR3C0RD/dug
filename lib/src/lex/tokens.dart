@@ -10,7 +10,7 @@ extension on FileSpan {
   }
 }
 
-abstract class Token {
+sealed class Token {
   String get type;
   final FileSpan span;
 
@@ -21,37 +21,7 @@ abstract class Token {
   @override
   String toString() => '<$type @ ${span.start.line}:${span.start.column}${repr != null ? ': $repr' : ''}>';
 }
-
-class NumberToken extends Token {
-  @override
-  final type = 'number';
-
-  final num value;
-
-  NumberToken._(super.span, this.value);
-
-  factory NumberToken.base2(FileSpan span) =>
-      NumberToken._(span, int.parse(span.text.substring(2).replaceAll('_', ''), radix: 2));
-  factory NumberToken.base10(FileSpan span) => NumberToken._(span, num.parse(span.text.replaceAll('_', '')));
-  factory NumberToken.base16(FileSpan span) =>
-      NumberToken._(span, int.parse(span.text.substring(2).replaceAll('_', ''), radix: 16));
-
-  @override
-  String get repr => '$value';
-}
-
-class StringToken extends Token {
-  @override
-  final type = 'string';
-  final String value;
-
-  StringToken(super.span) : value = span.text.substring(1, span.length - 1);
-
-  @override
-  String get repr => '"${RegExp.escape(value)}"';
-}
-
-abstract class CharToken extends Token {
+sealed class CharToken extends Token {
   final String char;
 
   CharToken(super.span) : char = span.text.trim();
@@ -67,7 +37,7 @@ class ColonToken extends CharToken {
   ColonToken(super.span);
 }
 
-abstract class KeywordToken extends Token {
+sealed class KeywordToken extends Token {
   KeywordToken(super.span);
 
   String get keyword => span.text.split(' ').first;
@@ -122,7 +92,9 @@ class TagToken extends Token {
   @override
   final type = 'tag';
 
-  TagToken(super.span);
+  final String tag;
+
+  TagToken(super.span, [String? tag]): tag = tag ?? span.text.trim();
 }
 
 class IndentToken extends Token {
@@ -144,6 +116,8 @@ class DoctypeToken extends KeywordToken {
   final type = 'doctype';
 
   DoctypeToken(super.span);
+
+  String get doctype => super.span.text.split(' ').skip(1).join(' ');
 }
 
 class YieldToken extends KeywordToken {
