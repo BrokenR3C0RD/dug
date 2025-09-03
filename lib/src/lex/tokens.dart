@@ -34,7 +34,7 @@ class ColonToken extends CharToken {
   @override
   final type = 'colon';
 
-  ColonToken(super.span);
+  ColonToken(super.span, Match? _);
 }
 
 sealed class KeywordToken extends Token {
@@ -50,7 +50,7 @@ class TextToken extends Token {
   @override
   final type = 'text';
 
-  TextToken(super.span);
+  TextToken(super.span, [Match? _]);
 
   String get text => span.text;
 }
@@ -114,41 +114,41 @@ class OutdentToken extends Token {
 class DoctypeToken extends KeywordToken {
   @override
   final type = 'doctype';
+  final String doctype;
 
-  DoctypeToken(super.span);
-
-  String get doctype => super.span.text.split(' ').skip(1).join(' ');
+  DoctypeToken(super.span, Match match): doctype = match.group(1)!;
 }
 
 class YieldToken extends KeywordToken {
   @override
   final type = 'yield';
 
-  YieldToken(super.span);
+  YieldToken(super.span, [Match? _]);
 }
 
 class CaseToken extends KeywordToken {
   @override
   final type = 'case';
 
-  CaseToken(super.span);
+  CaseToken(super.span, [Match? _]);
 
-  String get expression => super.span.text.substring(5);
+  String get expr => super.span.text.substring(5);
 
   @override
-  String toString() => '${super.toString()} = $expression';
+  String toString() => '${super.toString()} = $expr';
 }
 
 class WhenToken extends KeywordToken {
   @override
   final type = 'when';
 
-  WhenToken(super.span);
+  final FileSpan expr;
 
-  String get expression => super.span.text.substring(5);
+  WhenToken(super.span, this.expr);
+
 
   @override
-  String toString() => '${super.toString()} = $expression';
+  String toString() => '${super.toString()} = ${expr.text}';
 }
 
 class InterpolationToken extends Token {
@@ -167,14 +167,14 @@ class DefaultToken extends KeywordToken {
   @override
   final type = 'default';
 
-  DefaultToken(super.span);
+  DefaultToken(super.span, [Match? _]);
 }
 
 class PathToken extends Token {
   @override
   final type = 'path';
 
-  PathToken(super.span);
+  PathToken(super.span, [Match? _]);
 
   String get path => super.span.text.trim();
 }
@@ -183,7 +183,7 @@ class ExtendsToken extends KeywordToken {
   @override
   final type = 'extends';
 
-  ExtendsToken(super.span);
+  ExtendsToken(super.span, [Match? _]);
 }
 
 class BlockToken extends Token {
@@ -207,7 +207,7 @@ class MixinBlockToken extends KeywordToken {
   @override
   final type = 'mixinBlock';
 
-  MixinBlockToken(super.span);
+  MixinBlockToken(super.span, [Match? _]);
 }
 
 class StartAttributesToken extends CharToken {
@@ -243,21 +243,26 @@ class FilterToken extends Token {
   @override
   final type = 'filter';
 
-  FilterToken(super.span);
+  final String name;
+
+  FilterToken(super.span, Match match): name = match.group(1)!;
 }
 
 class IncludeToken extends Token {
   @override
   final type = 'include';
 
-  IncludeToken(super.span);
+  IncludeToken(super.span, [Match? _]);
 }
 
 class MixinToken extends KeywordToken {
   @override
   final type = 'mixin';
 
-  MixinToken(super.span);
+  final FileSpan name;
+  final FileSpan? args;
+
+  MixinToken(super.span, this.name, this.args);
 }
 
 class CallToken extends Token {
@@ -277,19 +282,11 @@ class CallToken extends Token {
 class IfToken extends Token {
   @override
   final type = 'if';
+  final bool unless;
 
   final FileSpan expr;
 
-  IfToken(super.span, this.expr);
-}
-
-class UnlessToken extends Token {
-  @override
-  final type = 'if';
-
-  final FileSpan expr;
-
-  UnlessToken(super.span, this.expr);
+  IfToken(super.span, this.expr, {required this.unless});
 }
 
 class ElseIfToken extends Token {
@@ -322,10 +319,11 @@ class EachToken extends Token {
   @override
   final type = 'each';
 
-  final FileSpan lval;
+  final String? key;
+  final String val;
   final FileSpan expr;
 
-  EachToken(super.span, this.lval, this.expr);
+  EachToken(super.span, this.key, this.val, this.expr);
 }
 
 class WhileToken extends Token {
@@ -355,7 +353,7 @@ class BlockCodeToken extends Token {
   @override
   final type = 'blockcode';
 
-  BlockCodeToken(super.span);
+  BlockCodeToken(super.span, [Match? _]);
 }
 
 class CodeToken extends Token {
@@ -380,21 +378,25 @@ class IdToken extends Token {
   @override
   final type = 'id';
 
-  IdToken(super.span);
+  final String val;
+
+  IdToken(super.span, Match match): val = match.group(1)!;
 }
 
 class DotToken extends Token {
   @override
   final type = 'dot';
 
-  DotToken(super.span);
+  DotToken(super.span, [Match? _]);
 }
 
 class ClassToken extends Token {
   @override
   final type = 'class';
 
-  ClassToken(super.span);
+  final String val;
+
+  ClassToken(super.span, Match match): val = match.group(1)!;
 }
 
 class AttributesBlockToken extends Token {
@@ -435,6 +437,5 @@ class SlashToken extends CharToken {
   @override
   String get type => 'slash';
 
-  SlashToken(super.span);
-
+  SlashToken(super.span, [Match? _]);
 }

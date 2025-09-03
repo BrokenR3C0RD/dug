@@ -10,7 +10,8 @@ import 'package:jsparser/jsparser.dart';
 import 'package:source_span/source_span.dart';
 import 'package:string_scanner/string_scanner.dart';
 
-typedef _TokenCons<T extends Token> = T Function(FileSpan);
+typedef _TextCons<T extends Token> = T Function(FileSpan);
+typedef _TokenCons<T extends Token> = T Function(FileSpan, Match);
 
 extension on FileSpan {
   FileSpan trim() {
@@ -59,7 +60,7 @@ class Lexer {
 
   T? _scan<T extends Token>(Pattern pattern, _TokenCons<T> type) {
     if (_scanner.scan(pattern)) {
-      return type(_scanner.lastSpan!.trim());
+      return type(_scanner.lastSpan!.trim(), _scanner.lastMatch!);
     }
     return null;
   }
@@ -69,10 +70,11 @@ class Lexer {
     if (!_scanner.scan(pattern)) return null;
 
     final matchedSpan = _scanner.lastSpan!;
+    final match = _scanner.lastMatch!;
 
     final nextChar = _scanner.peekCodePoint();
     if (nextChar == ':'.codeUnitAt(0)) {
-      return cons(matchedSpan);
+      return cons(matchedSpan, match);
     }
 
     _scanner.scan(RegExp(r'[ \t]*'));
@@ -81,7 +83,7 @@ class Lexer {
     final atNewline = _scanner.peekCodePoint() == '\n'.codeUnitAt(0);
 
     if (ended || atNewline) {
-      return cons(matchedSpan);
+      return cons(matchedSpan, match);
     }
 
     _scanner.state = before;
@@ -184,7 +186,6 @@ class Lexer {
 
       final startOffset = (e.startOffset ?? e.endOffset);
       final endOffset = e.endOffset;
-      print(tokens.join('\n'));
       throw SourceSpanException('Invalid expression: ${e.message}', expr.subspan(startOffset, endOffset));
     }
   }
@@ -314,20 +315,21 @@ class Lexer {
   }
 
   bool _when() {
-    final tok = _scanEndOfLine(RegExp('when +([^:\n]+)'), WhenToken.new);
-    if (tok != null) {
-      final start = tok.span.start;
-      final exprStart = start.offset + 5;
+    final start = _scanner.state;
+    if (_scanner.scan(RegExp('when +(?=[^:\n]+)'))) {
+      final exprStart = _scanner.state;
 
-      var parser = parseString(_scanner.substring(exprStart));
+      State parser;
 
+      _scanner.expect(RegExp(r'[^:\n]+'));
+      parser = parseString(_scanner.spanFrom(exprStart).text);
       while (parser.isNesting() || parser.isString) {
         if (!_scanner.scan(RegExp(':([^:\n]+)'))) break;
-        parser = parseString(_scanner.substring(exprStart));
+        parser = parseString(_scanner.spanFrom(exprStart).text);
       }
 
-      final newTok = WhenToken(tok.span.expand(_scanner.emptySpan));
-      _assertExpression(newTok.span.subspan(5));
+      final newTok = WhenToken(_scanner.spanFrom(start), _scanner.spanFrom(exprStart));
+      _assertExpression(newTok.expr);
       _tokens.add(newTok);
       return true;
     }
@@ -632,12 +634,18 @@ class Lexer {
   }
 
   bool _mixin() {
-    final tok = _scan(RegExp(r'mixin +([-\w]+)(?: *\((.*)\))? '), MixinToken.new);
-    if (tok == null) {
+    final start = _scanner.state;
+    if (!_scanner.scan(RegExp(r'mixin +(?=([-\w]+)(?: *\((.*)\))?)'))) {
       return false;
     }
 
-    _tokens.add(tok);
+    _scanner.expect(RegExp(r'([-\w]+)'));
+    final name = _scanner.lastSpan!.trim();
+
+    _scanner.scan(RegExp(r'(?: *\((.*)\))?'));
+    final args = _scanner.lastSpan?.trim();
+    
+    _tokens.add(MixinToken(_scanner.spanFrom(start), name, args));
 
     return true;
   }
@@ -713,8 +721,8 @@ class Lexer {
       final span = _scanner.spanFrom(start);
 
       _tokens.add(switch (type) {
-        'if' => IfToken(span, expr),
-        'unless' => UnlessToken(span, expr),
+        'if' => IfToken(span, expr, unless: false),
+        'unless' => IfToken(span, expr, unless: true),
         'else if' => ElseIfToken(span, expr),
         _ => throw Error(),
       });
@@ -763,15 +771,29 @@ class Lexer {
     final start = _scanner.state;
 
     if (_scanner.scan(RegExp(r'(?:each|for) +(?=([a-zA-Z_$][\w$]*)(?: *, *([a-zA-Z_$][\w$]*))? * in *([^\n]+))'))) {
+
       _scanner.expect(RegExp(r'([a-zA-Z_$][\w$]*)(?: *, *([a-zA-Z_$][\w$]*))? *(?= in)'));
-      final lvals = _scanner.lastSpan!.trim();
+      final lval1 = _scanner.lastMatch!.group(1)!;
+      final lval2 = _scanner.lastMatch!.group(2);
+
+      final String? key;
+      final String val;
+
+      if (lval2 == null) {
+        key = null;
+        val = lval1;
+      } else {
+        key = lval1;
+        val = lval2;
+      }
+
       _scanner.expect(' in ');
       _scanner.expect(RegExp(r' *([^\n]+)'));
       final expr = _scanner.lastSpan!.trim();
 
       _assertExpression(expr);
 
-      _tokens.add(EachToken(_scanner.spanFrom(start), lvals, expr));
+      _tokens.add(EachToken(_scanner.spanFrom(start), key, val, expr));
       return true;
     }
 
@@ -812,11 +834,12 @@ class Lexer {
   }
 
   bool _tag() {
-    final tok = _scan(RegExp(r'(\w(?:[-:\w]*\w)?)'), TagToken.new);
-    if (tok == null) {
+    final start = _scanner.state;
+    if (!_scanner.scan(RegExp(r'(\w(?:[-:\w]*\w)?)'))) {
       return false;
     }
 
+    final tok = TagToken(_scanner.spanFrom(start));
     _tokens.add(tok);
     return true;
   }
@@ -965,7 +988,7 @@ class Lexer {
     return true;
   }
 
-  int _addText<T extends Token>(_TokenCons<T> type, SpanScanner scanner, [String prefix = '', int escaped = 0]) {
+  int _addText<T extends Token>(_TextCons<T> type, SpanScanner scanner, [String prefix = '', int escaped = 0]) {
     final start = scanner.state;
     var startOfPlaintext = scanner.state;
 

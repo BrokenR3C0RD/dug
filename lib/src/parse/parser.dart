@@ -71,6 +71,7 @@ class Parser {
   final TokenStream tokens;
   final SourceFile file;
   FileSpan last;
+  int _inMixin = 0;
 
   Parser(List<Token> tokens, this.file) : tokens = TokenStream(tokens), last = file.location(0).pointSpan();
   factory Parser.fromLexer(Lexer lexer) => Parser(lexer.getTokens(), lexer.file);
@@ -126,7 +127,7 @@ class Parser {
     EachOfToken() => _parseEachOf(),
     CodeToken() => _parseCode(),
     BlockCodeToken() => _parseBlockCode(),
-    IfToken() || UnlessToken() => _parseConditional(),
+    IfToken() => _parseConditional(),
     WhileToken() => _parseWhile(),
     CallToken() => _parseCall(),
     InterpolationToken() => _parseInterpolation(),
@@ -161,12 +162,12 @@ class Parser {
             throw ParserException('Duplicate attribute "id" is not allowed', token: tok);
           }
           attributeNames.add('id');
-          tag.attrs.add(Attr(tok.span, 'id', "'${tok.span.text.substring(1)}'", mustEscape: false));
+          tag.attrs.add(Attr(tok.span, 'id', "'${tok.val}'", mustEscape: false));
           continue;
 
         case ClassToken():
           final tok = _advance() as ClassToken;
-          tag.attrs.add(Attr(tok.span, 'class', "'${tok.span.text.substring(1)}'", mustEscape: false));
+          tag.attrs.add(Attr(tok.span, 'class', "'${tok.val}'", mustEscape: false));
           continue;
 
         case StartAttributesToken():
@@ -197,7 +198,7 @@ class Parser {
       case InterpolatedCodeToken():
         tag.block!.extend(_parseText());
       case CodeToken():
-        tag.block!.nodes.add(_parseCode(todo: true));
+        tag.block!.nodes.add(_parseCode(noBlock: true));
       case ColonToken():
         _advance();
         tag.block = Block.fromNode(_parseExpr());
@@ -298,23 +299,97 @@ class Parser {
   }
 
   Node _parseMixin() {
-    throw UnimplementedError();
+    final tok = tokens.expect<MixinToken>('mixin');
+    final name = tok.name.text;
+    final args = tok.args?.text ?? '';
+
+    if (_peek() is IndentToken) {
+      _inMixin++;
+      final mixin = Mixin(tok.span, name, args, call: false, block: _block());
+      _inMixin--;
+      return mixin;
+    } else {
+      throw ParserException('Mixin $name declared without body', token: tok);
+    }
   }
 
   Node _parseBlock() {
-    throw UnimplementedError();
+    final tok = tokens.expect<BlockToken>('block');
+
+    return NamedBlock.fromBlock(
+      _peek() is IndentToken ? _block() : _emptyBlock(tok.span.start),
+      tok.name.text,
+      tok.mode,
+    );
   }
 
   Node _parseMixinBlock() {
-    throw UnimplementedError();
+    final tok = tokens.expect<MixinBlockToken>('mixin block');
+    if (_inMixin == 0) {
+      throw ParserException('Anonymous blocks are not allowed outside of a mixin.', token: tok);
+    }
+    return MixinBlock(tok.span);
   }
 
   Node _parseCase() {
-    throw UnimplementedError();
+    final tok = tokens.expect<CaseToken>('case');
+    final node = Case(tok.span, tok.expr);
+    final block = _emptyBlock(tok.span.end);
+
+    tokens.expect<IndentToken>('indent');
+    while (_peek() is! OutdentToken) {
+      switch (_peek()) {
+        case CommentToken():
+        case EndOfLineToken():
+          _advance();
+          break;
+        case WhenToken():
+          block.nodes.add(_parseWhen());
+        case DefaultToken():
+          block.nodes.add(_parseDefault());
+        default:
+          throw ParserException(
+            'Unexpected token ${_peek().type}',
+            expected: '`when`, `default`, or `newline`',
+            token: _peek(),
+          );
+      }
+    }
+
+    tokens.expect<OutdentToken>('outdent');
+    node.block = block;
+    return node;
+  }
+
+  Node _parseWhen() {
+    final tok = tokens.expect<WhenToken>('when');
+    if (_peek() is! EndOfLineToken) {
+      return When(tok.span, tok.expr.text, _parseBlockExpansion());
+    } else {
+      return When(tok.span, tok.expr.text, null);
+    }
+  }
+
+  Node _parseDefault() {
+    final tok = tokens.expect<DefaultToken>('default');
+    return When(tok.span, 'default', _parseBlockExpansion());
+  }
+
+  Block _parseBlockExpansion() {
+    if (_peek() is ColonToken) {
+      _advance();
+      final expr = _parseExpr();
+      return Block.fromNode(expr);
+    } else {
+      return _block();
+    }
   }
 
   Node _parseExtends() {
-    throw UnimplementedError();
+    final tok = tokens.expect<ExtendsToken>('extends');
+    final path = tokens.expect<PathToken>('path');
+
+    return Extends(tok.span, FileReference(path.span, path.path));
   }
 
   Block _block() {
@@ -356,7 +431,10 @@ class Parser {
   }
 
   IncludeFilter _parseIncludeFilter() {
-    throw UnimplementedError();
+    final tok = tokens.expect<FilterToken>('filter');
+    final attrs = _peek() is StartAttributesToken ? _attrs() : <Attr>[];
+
+    return IncludeFilter(tok.span, tok.name, attrs);
   }
 
   Node _parseDoctype() {
@@ -365,7 +443,21 @@ class Parser {
   }
 
   Node _parseFilter() {
-    throw UnimplementedError();
+    final tok = tokens.expect<FilterToken>('filter');
+    final attrs = _peek() is StartAttributesToken ? _attrs() : <Attr>[];
+    final Block block;
+
+    switch (_peek()) {
+      case TextToken():
+        final tok = tokens.expect<TextToken>('text');
+        block = _initBlock(tok.span.start, [Text(tok.span, tok.text)]);
+      case Filter():
+        block = _initBlock(tok.span.start, [_parseFilter()]);
+      default:
+        block = _parseTextBlock() ?? _emptyBlock(tok.span.start);
+    }
+
+    return Filter(tok.span, tok.name, attrs, block);
   }
 
   Node _parseComment() {
@@ -412,35 +504,157 @@ class Parser {
   }
 
   List<Node> _parseTextHtml() {
-    throw UnimplementedError();
+    final nodes = <Node>[];
+    Text? currentNode = null;
+
+    loop:
+    while (true) {
+      final peek = _peek();
+      switch (peek) {
+        case TextHtmlToken():
+          _advance();
+          if (currentNode == null) {
+            currentNode = Text(peek.span, peek.span.text, isHtml: true);
+            nodes.add(currentNode);
+          } else {
+            currentNode.val = '${currentNode.val!}\n${peek.span.text}';
+          }
+
+        case IndentToken():
+          final block = _block();
+          for (final node in block.nodes.cast<Text>()) {
+            if (node.isHtml) {
+              if (currentNode == null) {
+                currentNode = Text(peek.span, peek.span.text, isHtml: true);
+                nodes.add(currentNode);
+              } else {
+                currentNode.val = '${currentNode.val!}\n${peek.span.text}';
+              }
+            } else {
+              currentNode = null;
+              nodes.add(node);
+            }
+          }
+
+        case CodeToken():
+          currentNode = null;
+          nodes.add(_parseCode(noBlock: true));
+
+        case EndOfLineToken():
+          _advance();
+
+        default:
+          break loop;
+      }
+    }
+
+    return nodes;
   }
 
   Node _parseDot() {
-    throw UnimplementedError();
+    final tok = tokens.expect<DotToken>('.');
+    return _parseTextBlock() ?? Text(tok.span, null);
   }
 
   Node _parseEach() {
-    throw UnimplementedError();
+    final tok = tokens.expect<EachToken>('each');
+    final node = Each(tok.span, tok.key, tok.val, tok.expr.text, _block());
+    if (_peek() is ElseToken) {
+      _advance();
+      node.alternate = _block();
+    }
+    return node;
   }
 
   Node _parseEachOf() {
-    throw UnimplementedError();
+    final tok = tokens.expect<EachOfToken>('eachOf');
+    return EachOf(tok.span, tok.lval.text, tok.expr.text, _block());
   }
 
-  Node _parseCode({bool todo = false}) {
-    throw UnimplementedError();
+  Node _parseCode({bool noBlock = false}) {
+    final tok = tokens.expect<CodeToken>('code');
+    final node = Code(tok.span, tok.code.text, buffer: tok.buffer, mustEscape: tok.mustEscape, isInline: noBlock);
+
+    if (!noBlock && _peek() is IndentToken) {
+      if (tok.buffer) {
+        throw ParserException('Buffered code cannot have a block attached to it', token: tok);
+      }
+      node.block = _block();
+    }
+
+    return node;
   }
 
   Node _parseBlockCode() {
-    throw UnimplementedError();
+    final tok = tokens.expect<BlockCodeToken>('blockcode');
+    var text = '';
+
+    if (_peek() is StartPipelessTextToken) {
+      _advance();
+
+      while (_peek() is! EndPipelessTextToken) {
+        final tok = _advance();
+        switch (tok) {
+          case TextToken():
+            text += tok.text;
+          case EndOfLineToken():
+            text += '\n';
+          default:
+            throw ParserException('unexpected token ${tok.type}', token: tok);
+        }
+      }
+
+      _advance();
+    }
+
+    return Code(tok.span, text, buffer: false, mustEscape: false, isInline: false);
   }
 
   Node _parseConditional() {
-    throw UnimplementedError();
+    final tok = tokens.expect<IfToken>('if');
+    final node = Conditional(tok.span, tok.unless, tok.expr.text, _emptyBlock(tok.span.start));
+
+    if (_peek() is IndentToken) {
+      node.consequent = _block();
+    }
+
+    var currentNode = node;
+
+    loop:
+    while (true) {
+      final peek = _peek();
+      switch (peek) {
+        case EndOfLineToken():
+          _advance();
+        case ElseIfToken():
+          final tok = tokens.expect<ElseIfToken>('else-if');
+          currentNode = node.alternate = Conditional(tok.span, false, tok.expr.text, _emptyBlock(tok.span.start));
+          if (_peek() is IndentToken) {
+            currentNode.consequent = _block();
+          }
+        case ElseToken():
+          _advance();
+          if (_peek() is IndentToken) {
+            currentNode.alternate = _block();
+          }
+          break loop;
+        default:
+          break loop;
+      }
+    }
+
+    return node;
   }
 
   Node _parseWhile() {
-    throw UnimplementedError();
+    final tok = tokens.expect<WhileToken>('while');
+    final node = While(tok.span, tok.expr.text);
+    if (_peek() is IndentToken) {
+      node.block = _block();
+    } else {
+      node.block = _emptyBlock(tok.span.start);
+    }
+    return node;
   }
 
   Node _parseCall() {
@@ -461,11 +675,21 @@ class Parser {
   }
 
   Node _parseInterpolation() {
-    throw UnimplementedError();
+    final tok = _advance() as InterpolationToken;
+    final tag = InterpolatedTag(
+      tok.span,
+      tok.expression,
+      selfClosing: false,
+      block: _emptyBlock(tok.span.start),
+      isInline: false,
+    );
+
+    return _tag(tag, selfClosingAllowed: true);
   }
 
   Node _parseYield() {
-    throw UnimplementedError();
+    final tok = tokens.expect<YieldToken>('yield');
+    return YieldBlock(tok.span);
   }
 
   Never _invalidToken() {
