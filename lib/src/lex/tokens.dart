@@ -116,7 +116,7 @@ class DoctypeToken extends KeywordToken {
   final type = 'doctype';
   final String doctype;
 
-  DoctypeToken(super.span, Match match): doctype = match.group(1)!;
+  DoctypeToken(super.span, Match match): doctype = match.group(1)!.trim();
 }
 
 class YieldToken extends KeywordToken {
@@ -245,7 +245,7 @@ class FilterToken extends Token {
 
   final String name;
 
-  FilterToken(super.span, Match match): name = match.group(1)!;
+  FilterToken(super.span, Match match): name = match.group(1)!.trim();
 }
 
 class IncludeToken extends Token {
@@ -380,7 +380,7 @@ class IdToken extends Token {
 
   final String val;
 
-  IdToken(super.span, Match match): val = match.group(1)!;
+  IdToken(super.span, Match match): val = match.group(1)!.trim();
 }
 
 class DotToken extends Token {
@@ -396,7 +396,7 @@ class ClassToken extends Token {
 
   final String val;
 
-  ClassToken(super.span, Match match): val = match.group(1)!;
+  ClassToken(super.span, Match match): val = match.group(1)!.trim();
 }
 
 class AttributesBlockToken extends Token {

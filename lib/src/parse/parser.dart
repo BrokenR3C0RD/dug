@@ -77,7 +77,7 @@ class Parser {
   factory Parser.fromLexer(Lexer lexer) => Parser(lexer.getTokens(), lexer.file);
 
   Block parse() {
-    final block = _emptyBlock(last.start);
+    final block = _emptyBlock(last);
 
     while (_peek() is! EndOfSourceToken) {
       final peek = _peek();
@@ -93,7 +93,7 @@ class Parser {
     return block;
   }
 
-  Block _emptyBlock(FileLocation start) => _initBlock(start, []);
+  Block _emptyBlock(FileSpan location) => _initBlock(location.start, []);
 
   Block _initBlock(FileLocation start, List<Node> nodes) => Block(start.pointSpan(), nodes);
 
@@ -143,7 +143,7 @@ class Parser {
       tok.tag,
       selfClosing: false,
       isInline: _inlineTags.contains(tok.tag),
-      block: _emptyBlock(tok.span.start),
+      block: _emptyBlock(tok.span),
     );
 
     return _tag(tag, selfClosingAllowed: true);
@@ -231,7 +231,7 @@ class Parser {
     }
 
     if (tag.textOnly) {
-      tag.block = _parseTextBlock() ?? _emptyBlock(tag.location!.start);
+      tag.block = _parseTextBlock() ?? _emptyBlock(tag.span);
     } else if (_peek() is IndentToken) {
       tag.block!.extend(_block());
     }
@@ -243,7 +243,7 @@ class Parser {
     final tok = tokens.accept<StartPipelessTextToken>();
     if (tok == null) return null;
 
-    final block = _emptyBlock(tok.span.start);
+    final block = _emptyBlock(tok.span);
 
     while (_peek() is! EndPipelessTextToken) {
       final tok = _advance();
@@ -260,7 +260,7 @@ class Parser {
 
         case InterpolatedCodeToken():
           block.nodes.add(
-            Code(tok.span, tok.code.text, buffer: tok.buffer, mustEscape: tok.mustEscape, isInline: true),
+            Code(tok.code, tok.code.text, buffer: tok.buffer, mustEscape: tok.mustEscape, isInline: true),
           );
 
         default:
@@ -317,7 +317,8 @@ class Parser {
     final tok = tokens.expect<BlockToken>('block');
 
     return NamedBlock.fromBlock(
-      _peek() is IndentToken ? _block() : _emptyBlock(tok.span.start),
+      tok.span,
+      _peek() is IndentToken ? _block() : _emptyBlock(tok.span),
       tok.name.text,
       tok.mode,
     );
@@ -334,7 +335,7 @@ class Parser {
   Node _parseCase() {
     final tok = tokens.expect<CaseToken>('case');
     final node = Case(tok.span, tok.expr);
-    final block = _emptyBlock(tok.span.end);
+    final block = _initBlock(tok.span.end, []);
 
     tokens.expect<IndentToken>('indent');
     while (_peek() is! OutdentToken) {
@@ -394,7 +395,7 @@ class Parser {
 
   Block _block() {
     final tok = tokens.expect<IndentToken>('indent');
-    final block = _emptyBlock(tok.span.start);
+    final block = _emptyBlock(tok.span);
 
     while (tokens.peek() is! OutdentToken) {
       final peek = tokens.peek();
@@ -422,8 +423,8 @@ class Parser {
     final path = tokens.expect<PathToken>('path');
     final file = FileReference(path.span, path.path);
 
-    if (file.filename.endsWith('.pug') && filters.isEmpty) {
-      final block = _peek() is IndentToken ? _block() : _emptyBlock(tok.span.start);
+    if (file.path.endsWith('.pug') && filters.isEmpty) {
+      final block = _peek() is IndentToken ? _block() : _emptyBlock(tok.span);
       return Include(tok.span, file, block);
     } else {
       return RawInclude(tok.span, file, filters);
@@ -454,7 +455,7 @@ class Parser {
       case Filter():
         block = _initBlock(tok.span.start, [_parseFilter()]);
       default:
-        block = _parseTextBlock() ?? _emptyBlock(tok.span.start);
+        block = _parseTextBlock() ?? _emptyBlock(tok.span);
     }
 
     return Filter(tok.span, tok.name, attrs, block);
@@ -484,7 +485,7 @@ class Parser {
           tags.add(Text(tok.span, tok.text));
         case InterpolatedCodeToken():
           _advance();
-          tags.add(Code(tok.span, tok.code.text, buffer: tok.buffer, mustEscape: tok.mustEscape, isInline: true));
+          tags.add(Code(tok.code, tok.code.text, buffer: tok.buffer, mustEscape: tok.mustEscape, isInline: true));
         case EndOfLineToken():
           if (!block) break loop;
           _advance();
@@ -573,7 +574,7 @@ class Parser {
 
   Node _parseCode({bool noBlock = false}) {
     final tok = tokens.expect<CodeToken>('code');
-    final node = Code(tok.span, tok.code.text, buffer: tok.buffer, mustEscape: tok.mustEscape, isInline: noBlock);
+    final node = Code(tok.code, tok.code.text, buffer: tok.buffer, mustEscape: tok.mustEscape, isInline: noBlock);
 
     if (!noBlock && _peek() is IndentToken) {
       if (tok.buffer) {
@@ -607,12 +608,12 @@ class Parser {
       _advance();
     }
 
-    return Code(tok.span, text, buffer: false, mustEscape: false, isInline: false);
+    return Code(tok.span.expand(last), text, buffer: false, mustEscape: false, isInline: false);
   }
 
   Node _parseConditional() {
     final tok = tokens.expect<IfToken>('if');
-    final node = Conditional(tok.span, tok.unless, tok.expr.text, _emptyBlock(tok.span.start));
+    final node = Conditional(tok.span, tok.unless, tok.expr.text, _emptyBlock(tok.span));
 
     if (_peek() is IndentToken) {
       node.consequent = _block();
@@ -628,7 +629,7 @@ class Parser {
           _advance();
         case ElseIfToken():
           final tok = tokens.expect<ElseIfToken>('else-if');
-          currentNode = node.alternate = Conditional(tok.span, false, tok.expr.text, _emptyBlock(tok.span.start));
+          currentNode = node.alternate = Conditional(tok.span, false, tok.expr.text, _emptyBlock(tok.span));
           if (_peek() is IndentToken) {
             currentNode.consequent = _block();
           }
@@ -652,7 +653,7 @@ class Parser {
     if (_peek() is IndentToken) {
       node.block = _block();
     } else {
-      node.block = _emptyBlock(tok.span.start);
+      node.block = _emptyBlock(tok.span);
     }
     return node;
   }
@@ -662,7 +663,7 @@ class Parser {
     final name = tok.src;
     final args = tok.args;
 
-    final mixin = Mixin(tok.span, name.text, args?.text, call: true, block: _emptyBlock(tok.span.start));
+    final mixin = Mixin(tok.span, name.text, args?.text, call: true, block: _emptyBlock(tok.span));
     _tag(mixin);
 
     if (mixin.code != null) {
@@ -680,7 +681,7 @@ class Parser {
       tok.span,
       tok.expression,
       selfClosing: false,
-      block: _emptyBlock(tok.span.start),
+      block: _emptyBlock(tok.span),
       isInline: false,
     );
 

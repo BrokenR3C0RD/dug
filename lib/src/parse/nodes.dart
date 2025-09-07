@@ -1,15 +1,17 @@
 import 'dart:collection';
 
 import 'package:source_span/source_span.dart';
+import 'package:jsparser/jsparser.dart';
 
 typedef Visitor = void Function(Node);
-typedef Callback = bool Function(Node node, Function(dynamic node) replace, int depth);
+typedef ReplaceFn = void Function(dynamic replacement);
+typedef Callback = bool Function(Node node, ReplaceFn replace, int depth);
 
-abstract class Node {
+sealed class Node {
   String get type;
-  final FileSpan? location;
+  final FileSpan span;
 
-  Node(this.location);
+  Node(this.span);
 
   @override
   String toString() => type;
@@ -20,7 +22,7 @@ abstract class Node {
     parents ??= Queue();
 
     final arrayAllowed =
-        parents.isNotEmpty && (parents.first is Block || (parents.first is RawInclude && ast is IncludeFilter));
+        parents.isNotEmpty && (parents.first is Block || parents.first is NamedBlock || (parents.first is RawInclude && ast is IncludeFilter));
 
     List<Node> walkAndMergeNodes(List<Node> nodes) {
       return nodes.fold(<Node>[], (nodes, node) {
@@ -62,6 +64,7 @@ abstract class Node {
 
     switch (ast as Node) {
       case Block():
+      case NamedBlock():
         ast.nodes = walkAndMergeNodes(ast.nodes);
       case Case():
       case Filter():
@@ -118,7 +121,7 @@ abstract class Node {
         ast.file.walkAST(before: before, after: after, parents: parents, includeDependencies: includeDependencies);
 
       case Extends():
-        throw UnimplementedError();
+        ast.file.walkAST(before: before, after: after, parents: parents, includeDependencies: includeDependencies);
 
       case RawInclude():
         ast.filters = walkAndMergeNodes(ast.filters).cast<IncludeFilter>();
@@ -149,18 +152,23 @@ abstract class Node {
   }
 }
 
+abstract interface class LoadableNode {
+  FileReference get file;
+}
+
 class Block extends Node {
   @override
   String get type => 'Block';
 
   List<Node> nodes;
+  Map<String, List<NamedBlock>>? declaredBlocks;
 
-  Block(super.location, this.nodes);
+  Block(super.span, this.nodes);
   factory Block.fromNode(Node node) {
     if (node is Block) {
       return node;
     } else {
-      return Block(node.location!.start.pointSpan(), [node]);
+      return Block(node.span.start.pointSpan(), [node]);
     }
   }
 
@@ -173,33 +181,38 @@ class Block extends Node {
   }
 }
 
-class NamedBlock extends Block {
+class NamedBlock extends Node {
   @override
   String get type => 'NamedBlock';
 
   String name;
   String mode;
+  List<Node> nodes;
+  List<NamedBlock>? parents;
+  bool ignore = false;
 
-  NamedBlock(super.location, this.name, this.mode, super.nodes);
-  factory NamedBlock.fromBlock(Block block, String name, String mode) =>
-      NamedBlock(block.location, name, mode, block.nodes);
+  NamedBlock(super.span, this.name, this.mode, this.nodes);
+  factory NamedBlock.fromBlock(FileSpan span, Block block, String name, String mode) =>
+      NamedBlock(span, name, mode, block.nodes);
 }
 
 class MixinBlock extends Node {
   @override
   String get type => 'MixinBlock';
 
-  MixinBlock(super.location);
+  MixinBlock(super.span);
 }
 
 class FileReference extends Node {
   @override
   String get type => 'FileReference';
 
-  String filename;
-  Node? ast;
+  String path;
+  String? fullPath;
+  String? str;
+  Block? ast;
 
-  FileReference(super.location, this.filename);
+  FileReference(super.span, this.path);
 }
 
 class Filter extends Node {
@@ -209,7 +222,7 @@ class Filter extends Node {
   List<Attr> attrs;
   Block block;
 
-  Filter(super.location, this.name, this.attrs, this.block);
+  Filter(super.span, this.name, this.attrs, this.block);
 }
 
 class IncludeFilter extends Node {
@@ -218,27 +231,31 @@ class IncludeFilter extends Node {
   String name;
   List<Attr> attrs;
 
-  IncludeFilter(super.location, this.name, this.attrs);
+  IncludeFilter(super.span, this.name, this.attrs);
 }
 
-class Include extends Node {
+class Include extends Node implements LoadableNode {
   @override
   String get type => 'Include';
 
+  @override
   FileReference file;
-  Block block;
 
-  Include(super.location, this.file, this.block);
+  Node block;
+
+  Include(super.span, this.file, this.block);
 }
 
-class RawInclude extends Node {
+class RawInclude extends Node implements LoadableNode {
   @override
   String get type => 'RawInclude';
 
+  @override
   FileReference file;
+
   List<IncludeFilter> filters;
 
-  RawInclude(super.location, this.file, this.filters);
+  RawInclude(super.span, this.file, this.filters);
 }
 
 class Doctype extends Node {
@@ -247,7 +264,7 @@ class Doctype extends Node {
 
   String doctype;
 
-  Doctype(super.location, this.doctype);
+  Doctype(super.span, this.doctype);
 }
 
 class Attr {
@@ -294,7 +311,7 @@ class Comment extends Node {
   String val;
   bool buffer;
 
-  Comment(super.location, this.val, {required this.buffer});
+  Comment(super.span, this.val, {required this.buffer});
 }
 
 class BlockComment extends Comment {
@@ -303,7 +320,7 @@ class BlockComment extends Comment {
 
   Block? block;
 
-  BlockComment(super.location, super.val, this.block, {required super.buffer});
+  BlockComment(super.span, super.val, this.block, {required super.buffer});
 }
 
 class Text extends Node {
@@ -313,7 +330,7 @@ class Text extends Node {
   String? val;
   bool isHtml;
 
-  Text(super.location, this.val, {this.isHtml = false});
+  Text(super.span, this.val, {this.isHtml = false});
 }
 
 class Code extends Node {
@@ -325,8 +342,9 @@ class Code extends Node {
   bool mustEscape;
   bool isInline;
   Block? block;
+  Program? statement;
 
-  Code(super.location, this.val, {required this.buffer, required this.mustEscape, required this.isInline});
+  Code(super.span, this.val, {required this.buffer, required this.mustEscape, required this.isInline});
 }
 
 class Mixin extends Tag {
@@ -336,7 +354,7 @@ class Mixin extends Tag {
   String? args;
   bool call;
 
-  Mixin(super.location, super.name, this.args, {required this.call, required super.block})
+  Mixin(super.span, super.name, this.args, {required this.call, required super.block})
     : super(isInline: false, selfClosing: false);
 }
 
@@ -352,7 +370,7 @@ class YieldBlock extends Node {
   @override
   String get type => 'YieldBlock';
 
-  YieldBlock(super.location);
+  YieldBlock(super.span);
 }
 
 class While extends Node {
@@ -362,7 +380,7 @@ class While extends Node {
   String test;
   Block? block;
 
-  While(super.location, this.test);
+  While(super.span, this.test);
 }
 
 class Case extends Node {
@@ -371,7 +389,7 @@ class Case extends Node {
   String expr;
   Block? block;
 
-  Case(super.location, this.expr);
+  Case(super.span, this.expr);
 }
 
 class When extends Node {
@@ -380,8 +398,7 @@ class When extends Node {
   String expr;
   Block? block;
 
-  When(super.location, this.expr, this.block);
-
+  When(super.span, this.expr, this.block);
 }
 
 class Each extends Node {
@@ -394,7 +411,7 @@ class Each extends Node {
   Block block;
   Block? alternate;
 
-  Each(super.location, this.key, this.val, this.obj, this.block);
+  Each(super.span, this.key, this.val, this.obj, this.block);
 }
 
 class EachOf extends Node {
@@ -405,7 +422,7 @@ class EachOf extends Node {
   String obj;
   Block block;
 
-  EachOf(super.location, this.val, this.obj, this.block);
+  EachOf(super.span, this.val, this.obj, this.block);
 }
 
 class Conditional extends Node {
@@ -417,14 +434,15 @@ class Conditional extends Node {
   Block consequent;
   Node? alternate;
 
-  Conditional(super.location, this.unless, this.test, this.consequent);
+  Conditional(super.span, this.unless, this.test, this.consequent);
 }
 
-class Extends extends Node {
+class Extends extends Node implements LoadableNode {
   @override
   String get type => 'Extends';
 
+  @override
   FileReference file;
 
-  Extends(super.location, this.file);
+  Extends(super.span, this.file);
 }

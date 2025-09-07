@@ -15,8 +15,9 @@ typedef _TokenCons<T extends Token> = T Function(FileSpan, Match);
 
 extension on FileSpan {
   FileSpan trim() {
-    final matches = RegExp(r'^(\s*)(.+?)(\s*)$', dotAll: true, multiLine: true).firstMatch(text);
-    if(matches == null) return this;
+    final matches = RegExp(r'^(\s*)(.+?)(\s*)$', dotAll: true).firstMatch(text);
+    if (matches == null) return this;
+
     final trimStart = matches.group(1)?.length ?? 0;
     final trimEnd = matches.group(3)?.length ?? 0;
 
@@ -55,7 +56,8 @@ class Lexer {
 
   Lexer(this._scanner, {bool interpolated = false}) : _interpolated = interpolated, file = _scanner.emptySpan.file;
 
-  Lexer.fromString(String source, {bool interpolated = false}) : this(SpanScanner(source), interpolated: interpolated);
+  Lexer.fromString(String source, {String? path, bool interpolated = false})
+    : this(SpanScanner(source, sourceUrl: path), interpolated: interpolated);
   Lexer.fromFile(File file) : this(SpanScanner(file.readAsStringSync(), sourceUrl: file.uri));
 
   T? _scan<T extends Token>(Pattern pattern, _TokenCons<T> type) {
@@ -69,7 +71,7 @@ class Lexer {
     final before = _scanner.state;
     if (!_scanner.scan(pattern)) return null;
 
-    final matchedSpan = _scanner.lastSpan!;
+    final matchedSpan = _scanner.lastSpan!.trim();
     final match = _scanner.lastMatch!;
 
     final nextChar = _scanner.peekCodePoint();
@@ -644,7 +646,7 @@ class Lexer {
 
     _scanner.scan(RegExp(r'(?: *\((.*)\))?'));
     final args = _scanner.lastSpan?.trim();
-    
+
     _tokens.add(MixinToken(_scanner.spanFrom(start), name, args));
 
     return true;
@@ -771,7 +773,6 @@ class Lexer {
     final start = _scanner.state;
 
     if (_scanner.scan(RegExp(r'(?:each|for) +(?=([a-zA-Z_$][\w$]*)(?: *, *([a-zA-Z_$][\w$]*))? * in *([^\n]+))'))) {
-
       _scanner.expect(RegExp(r'([a-zA-Z_$][\w$]*)(?: *, *([a-zA-Z_$][\w$]*))? *(?= in)'));
       final lval1 = _scanner.lastMatch!.group(1)!;
       final lval2 = _scanner.lastMatch!.group(2);
@@ -1064,6 +1065,8 @@ class Lexer {
       span = span.subspan(1);
     }
 
+    span = span.trim();
+
     final count = _addText(TextToken.new, SpanScanner.within(span));
     if (count < span.length) {
       _scanner.position -= (span.length - count);
@@ -1077,7 +1080,7 @@ class Lexer {
     _addText(TextHtmlToken.new, SpanScanner.within(_scanner.lastSpan!));
     return true;
   }
-  
+
   bool _comment() {
     final start = _scanner.state;
     if (_scanner.scan(RegExp(r'\/\/(-?)'))) {
