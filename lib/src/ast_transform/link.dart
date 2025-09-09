@@ -21,7 +21,7 @@ extension Link on Block {
     final firstAfterUnbuffered = nodes.firstWhereOrNull(
       (node) =>
           ((node is! Comment || node.buffer) &&
-          (node is! Text || node.val?.isNotEmpty == true) &&
+          (node is! Text || node.text.isNotEmpty) &&
           (node is! Code || node.buffer)),
     );
 

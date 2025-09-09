@@ -327,10 +327,10 @@ class Text extends Node {
   @override
   String get type => 'Text';
 
-  String? val;
+  String text;
   bool isHtml;
 
-  Text(super.span, this.val, {this.isHtml = false});
+  Text(super.span, this.text, {this.isHtml = false});
 }
 
 class Code extends Node {

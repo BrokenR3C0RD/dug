@@ -1,129 +1,73 @@
 import 'package:dug/src/parse/nodes.dart';
 
+
+const debug = false;
+
 abstract class CompilerBase {
   final Block root;
   late StringBuffer output;
 
   CompilerBase(this.root);
 
-  void enterBlock(Block node) {}
-  void enterNamedBlock(NamedBlock node) {}
-  void enterMixinBlock(MixinBlock node) {}
-  void enterFilter(Filter node) {}
-  void enterFileReference(FileReference node) {}
-  void enterIncludeFilter(IncludeFilter node) {}
-  void enterInclude(Include node) {}
-  void enterRawInclude(RawInclude node) {}
-  void enterDoctype(Doctype node) {}
-  void enterAttributeBlock(AttributeBlock node) {}
-  void enterMixin(Mixin node) {}
-  void enterInterpolatedTag(InterpolatedTag node) {}
-  void enterTag(Tag node) {}
-  void enterBlockComment(BlockComment node) {}
-  void enterComment(Comment node) {}
-  void enterText(Text node) {}
-  void enterCode(Code node) {}
-  void enterYieldBlock(YieldBlock node) => throw UnimplementedError('');
-  void enterWhile(While node) {}
-  void enterCase(Case node) {}
-  void enterWhen(When node) {}
-  void enterEach(Each node) {}
-  void enterEachOf(EachOf node) {}
-  void enterConditional(Conditional node) {}
-  void enterExtends(Extends node) {}
+  bool visitBlock(Block node) => true;
+  bool visitNamedBlock(NamedBlock node) => true;
+  bool visitMixinBlock(MixinBlock node) => true;
+  bool visitFilter(Filter node) => true;
+  bool visitFileReference(FileReference node) => true;
+  bool visitIncludeFilter(IncludeFilter node) => true;
+  bool visitInclude(Include node) => true;
+  bool visitRawInclude(RawInclude node) => true;
+  bool visitDoctype(Doctype node) => true;
+  bool visitAttributeBlock(AttributeBlock node) => true;
+  bool visitMixin(Mixin node) => true;
+  bool visitTag(Tag node) => true;
+  bool visitBlockComment(BlockComment node) => true;
+  bool visitComment(Comment node) => true;
+  bool visitText(Text node) => true;
+  bool visitCode(Code node) => true;
+  bool visitYieldBlock(YieldBlock node) => throw UnimplementedError('');
+  bool visitWhile(While node) => true;
+  bool visitCase(Case node) => true;
+  bool visitWhen(When node) => true;
+  bool visitEach(Each node) => true;
+  bool visitEachOf(EachOf node) => true;
+  bool visitConditional(Conditional node) => true;
+  bool visitExtends(Extends node) => true;
 
-  void exitBlock(Block node) {}
-  void exitNamedBlock(NamedBlock node) {}
-  void exitMixinBlock(MixinBlock node) {}
-  void exitFilter(Filter node) {}
-  void exitFileReference(FileReference node) {}
-  void exitIncludeFilter(IncludeFilter node) {}
-  void exitInclude(Include node) {}
-  void exitRawInclude(RawInclude node) {}
-  void exitDoctype(Doctype node) {}
-  void exitAttributeBlock(AttributeBlock node) {}
-  void exitMixin(Mixin node) {}
-  void exitInterpolatedTag(InterpolatedTag node) {}
-  void exitTag(Tag node) {}
-  void exitBlockComment(BlockComment node) {}
-  void exitComment(Comment node) {}
-  void exitText(Text node) {}
-  void exitCode(Code node) {}
-  void exitYieldBlock(YieldBlock node) {}
-  void exitWhile(While node) {}
-  void exitCase(Case node) {}
-  void exitWhen(When node) {}
-  void exitEach(Each node) {}
-  void exitEachOf(EachOf node) {}
-  void exitConditional(Conditional node) {}
-  void exitExtends(Extends node) {}
-
-  bool _enter(Node node, ReplaceFn _, int _) {
-    final _ = switch (node) {
-      Block() => enterBlock(node),
-      NamedBlock() => enterNamedBlock(node),
-      MixinBlock() => enterMixinBlock(node),
-      FileReference() => enterFileReference(node),
-      Filter() => enterFilter(node),
-      IncludeFilter() => enterIncludeFilter(node),
-      Include() => enterInclude(node),
-      RawInclude() => enterRawInclude(node),
-      Doctype() => enterDoctype(node),
-      AttributeBlock() => enterAttributeBlock(node),
-      Mixin() => enterMixin(node),
-      InterpolatedTag() => enterInterpolatedTag(node),
-      Tag() => enterTag(node),
-      BlockComment() => enterBlockComment(node),
-      Comment() => enterComment(node),
-      Text() => enterText(node),
-      Code() => enterCode(node),
-      YieldBlock() => enterYieldBlock(node),
-      While() => enterWhile(node),
-      Case() => enterCase(node),
-      When() => enterWhen(node),
-      Each() => enterEach(node),
-      EachOf() => enterEachOf(node),
-      Conditional() => enterConditional(node),
-      Extends() => enterExtends(node),
+  bool visit(Node node) {
+    if (debug) print('visiting ${node.type}');
+    return switch (node) {
+      Block() => visitBlock(node),
+      NamedBlock() => visitNamedBlock(node),
+      MixinBlock() => visitMixinBlock(node),
+      FileReference() => visitFileReference(node),
+      Filter() => visitFilter(node),
+      IncludeFilter() => visitIncludeFilter(node),
+      Include() => visitInclude(node),
+      RawInclude() => visitRawInclude(node),
+      Doctype() => visitDoctype(node),
+      AttributeBlock() => visitAttributeBlock(node),
+      Mixin() => visitMixin(node),
+      InterpolatedTag() => visitTag(node),
+      Tag() => visitTag(node),
+      BlockComment() => visitBlockComment(node),
+      Comment() => visitComment(node),
+      Text() => visitText(node),
+      Code() => visitCode(node),
+      YieldBlock() => visitYieldBlock(node),
+      While() => visitWhile(node),
+      Case() => visitCase(node),
+      When() => visitWhen(node),
+      Each() => visitEach(node),
+      EachOf() => visitEachOf(node),
+      Conditional() => visitConditional(node),
+      Extends() => visitExtends(node),
     };
-    return true;
-  }
-
-  bool _exit(Node node, ReplaceFn _, int _) {
-    final _ = switch (node) {
-      Block() => exitBlock(node),
-      NamedBlock() => exitNamedBlock(node),
-      MixinBlock() => exitMixinBlock(node),
-      FileReference() => exitFileReference(node),
-      Filter() => exitFilter(node),
-      IncludeFilter() => exitIncludeFilter(node),
-      Include() => exitInclude(node),
-      RawInclude() => exitRawInclude(node),
-      Doctype() => exitDoctype(node),
-      AttributeBlock() => exitAttributeBlock(node),
-      Mixin() => exitMixin(node),
-      InterpolatedTag() => exitInterpolatedTag(node),
-      Tag() => exitTag(node),
-      BlockComment() => exitBlockComment(node),
-      Comment() => exitComment(node),
-      Text() => exitText(node),
-      Code() => exitCode(node),
-      YieldBlock() => exitYieldBlock(node),
-      While() => exitWhile(node),
-      Case() => exitCase(node),
-      When() => exitWhen(node),
-      Each() => exitEach(node),
-      EachOf() => exitEachOf(node),
-      Conditional() => exitConditional(node),
-      Extends() => exitExtends(node),
-    };
-
-    return true;
   }
 
   String compile() {
     output = StringBuffer();
-    root.walkAST(before: _enter, after: _exit, includeDependencies: true);
+    root.walkAST(before: (node, _, _) => visit(node), includeDependencies: true);
     return output.toString();
   }
 }

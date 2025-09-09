@@ -47,51 +47,16 @@ void prettyPrint(Node node) {
 }
 
 void main() {
-  final start = Stopwatch()..start();
-
-  final lexer = Lexer.fromFile(File('test_layout/index.pug'));
-  lexer.getTokens();
-  print(lexer.tokens.join('\n'));
-  final lexingTime = start.elapsed;
-
+  final lexer = Lexer.fromFile(File('test_files/index.pug'));
   final parser = Parser.fromLexer(lexer);
   var nodes = parser.parse();
-  final parsingTime = start.elapsed;
+  nodes
+    ..loadDependencies()
+    ..stripComments()
+    ..parseJs();
 
-  nodes.walkAST(before: visit);
-  nodes.loadDependencies();
-  print('---');
-  prettyPrint(nodes);
-  nodes.stripComments();
-  nodes.parseJs();
-  print('---');
-  prettyPrint(nodes);
   nodes = nodes.link()..flattenBlocks();
 
-  final postProcessingTime = start.elapsed;
-  start.stop();
-
-  print('---');
-  print('Lexing tokens took ${lexingTime.inMilliseconds}ms');
-  print('Parsing took ${(parsingTime - lexingTime).inMilliseconds}ms');
-  print(
-    'Postprocessing (lexing/parsing dependencies, stripping comments, parsing JS) took ${(postProcessingTime - parsingTime).inMilliseconds}ms',
-  );
-  print('---');
-
-  int count = 0;
-  nodes.walkAST(
-    before: (_, _, _) {
-      count++;
-      return true;
-    },
-    includeDependencies: true,
-  );
-  print('Final node count: $count');
-
-  prettyPrint(nodes);
-
   final compilerOutput = SsgCompiler(nodes, pretty: true).compile();
-  print('---');
   print(compilerOutput);
 }

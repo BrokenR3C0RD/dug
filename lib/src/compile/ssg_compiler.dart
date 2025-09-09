@@ -1,7 +1,9 @@
 import 'package:dug/src/compile/compiler_base.dart';
 import 'package:dug/src/parse/nodes.dart';
+import 'package:dug/src/utils.dart';
+import 'package:source_span/source_span.dart';
 
-const doctypes = {
+const _doctypes = {
   'html': '<!DOCTYPE html>',
   'xml': '<?xml version="1.0" encoding="utf-8" ?>',
   'transitional':
@@ -18,253 +20,123 @@ const doctypes = {
   'plist': '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
 };
 
+const _whitespaceSensitiveTags = {'pre', 'whitespace'};
+
 class SsgCompiler extends CompilerBase {
   final bool pretty;
   bool terse = false;
   bool xml = false;
+  int indent = -1;
+  int escapePrettyModeDepth = 0;
 
   SsgCompiler(super.root, {this.pretty = false});
 
+  void _prettyIndent(int offset, bool newline) {
+    if (!pretty || escapePrettyModeDepth != 0) return;
+    if (newline) output.writeln();
+    output.write('  ' * (indent + offset));
+  }
+
   @override
-  void enterDoctype(Doctype node) {
-    final doctype = doctypes[node.doctype] ?? '<!DOCTYPE ${node.doctype}>';
-    terse = doctype.toLowerCase() == '<!doctype html>';
-    xml = doctype.startsWith('<?xml');
+  bool visitBlock(Block node) {
+    final nodes = node.nodes;
+
+    if (nodes.isEmpty) return false;
+
+    if (nodes.length == 1) {
+      visit(nodes.single);
+    } else {
+      var first = true;
+      for (final [cur, next] in nodes.windows(2)) {
+        if (first && cur is Text && next is Text) {
+          _prettyIndent(1, true);
+        }
+        visit(cur);
+        if (cur is Text && next is Text && cur.text.endsWith('\n')) {
+          _prettyIndent(1, false);
+        }
+        first = false;
+      }
+      visit(nodes.last);
+    }
+
+    return false;
+  }
+
+  dynamic evaluateExpression(String expr) {
+    throw UnimplementedError();
+  }
+
+  @override
+  bool visitTag(Tag node) {
+    indent++;
+    if (_whitespaceSensitiveTags.contains(node.name)) escapePrettyModeDepth++;
+
+    final name = node is InterpolatedTag ? evaluateExpression(node.name).toString() : node.name;
+    if (pretty && !node.isInline) _prettyIndent(0, true);
+
+    output.write('<$name');
+    _visitAttributes(node.attrs, node.attrBlocks);
+
+    if (node.selfClosing && !terse) {
+      if (pretty) output.write(' ');
+      output.write('/>');
+    } else {
+      output.write('>');
+    }
+
+    final block = node.block;
+    if (node.selfClosing) {
+      if (node.code != null ||
+          block != null &&
+              block.nodes.isNotEmpty &&
+              block.nodes.any((node) => node is! Text || node.text.trim().isNotEmpty)) {
+        throw SourceSpanException('${node.name} is self-closing but has content', node.span);
+      }
+    } else {
+      if (node.code != null) visitCode(node.code!);
+      visit(node.block!);
+
+      if (pretty && !(node.isInline || _tagCanInline(node))) {
+        _prettyIndent(0, true);
+      }
+      output.write('</$name>');
+    }
+
+    if (_whitespaceSensitiveTags.contains(node.name)) escapePrettyModeDepth--;
+    indent--;
+    return false;
+  }
+
+  static bool _tagCanInline(Tag tag) {
+    bool isInline(Node node) {
+      if (node is Block) return node.nodes.every(isInline);
+      if (node is Text && !node.text.contains('\n')) return true;
+      if (node is Tag && node.isInline) return true;
+      if (node is Code && node.isInline) return true;
+      return false;
+    }
+
+    return tag.block?.nodes.every(isInline) ?? true;
+  }
+
+  void _visitAttributes(List<Attr> attrs, List<AttributeBlock> attrBlocks) {
+    if (attrs.isEmpty && attrBlocks.isEmpty) return;
+    // throw UnimplementedError('attributes');
+  }
+
+  @override
+  bool visitDoctype(Doctype node) {
+    final doctype = _doctypes[node.doctype] ?? _doctypes['html'];
+    terse = doctype == _doctypes['html'];
+    xml = doctype == _doctypes['xml'];
     output.write(doctype);
+    return true;
   }
 
   @override
-  void enterAttributeBlock(AttributeBlock node) {
-    // TODO: implement enterAttributeBlock
-  }
-
-  @override
-  void enterBlock(Block node) {
-    // TODO: implement enterBlock
-  }
-
-  @override
-  void enterBlockComment(BlockComment node) {
-    // TODO: implement enterBlockComment
-  }
-
-  @override
-  void enterCase(Case node) {
-    // TODO: implement enterCase
-  }
-
-  @override
-  void enterCode(Code node) {
-    // TODO: implement enterCode
-  }
-
-  @override
-  void enterComment(Comment node) {
-    if (!node.buffer) return;
-  }
-
-  @override
-  void enterConditional(Conditional node) {
-    // TODO: implement enterConditional
-  }
-
-  @override
-  void enterEach(Each node) {
-    // TODO: implement enterEach
-  }
-
-  @override
-  void enterEachOf(EachOf node) {
-    // TODO: implement enterEachOf
-  }
-
-  @override
-  void enterExtends(Extends node) {
-    // TODO: implement enterExtends
-  }
-
-  @override
-  void enterFileReference(FileReference node) {
-    // TODO: implement enterFileReference
-  }
-
-  @override
-  void enterFilter(Filter node) {
-    // TODO: implement enterFilter
-  }
-
-  @override
-  void enterInclude(Include node) {
-    // TODO: implement enterInclude
-  }
-
-  @override
-  void enterIncludeFilter(IncludeFilter node) {
-    // TODO: implement enterIncludeFilter
-  }
-
-  @override
-  void enterInterpolatedTag(InterpolatedTag node) {
-    // TODO: implement enterInterpolatedTag
-  }
-
-  @override
-  void enterMixin(Mixin node) {
-    // TODO: implement enterMixin
-  }
-
-  @override
-  void enterMixinBlock(MixinBlock node) {
-    // TODO: implement enterMixinBlock
-  }
-
-  @override
-  void enterNamedBlock(NamedBlock node) {
-    // TODO: implement enterNamedBlock
-  }
-
-  @override
-  void enterRawInclude(RawInclude node) {
-    // TODO: implement enterRawInclude
-  }
-
-  @override
-  void enterTag(Tag node) {
-    // TODO: implement enterTag
-  }
-
-  @override
-  void enterText(Text node) {
-    // TODO: implement enterText
-  }
-
-  @override
-  void enterWhen(When node) {
-    // TODO: implement enterWhen
-  }
-
-  @override
-  void enterWhile(While node) {
-    // TODO: implement enterWhile
-  }
-
-  @override
-  void exitAttributeBlock(AttributeBlock node) {
-    // TODO: implement exitAttributeBlock
-  }
-
-  @override
-  void exitBlock(Block node) {
-    // TODO: implement exitBlock
-  }
-
-  @override
-  void exitBlockComment(BlockComment node) {
-    // TODO: implement exitBlockComment
-  }
-
-  @override
-  void exitCase(Case node) {
-    // TODO: implement exitCase
-  }
-
-  @override
-  void exitCode(Code node) {
-    // TODO: implement exitCode
-  }
-
-  @override
-  void exitComment(Comment node) {
-    // TODO: implement exitComment
-  }
-
-  @override
-  void exitConditional(Conditional node) {
-    // TODO: implement exitConditional
-  }
-
-  @override
-  void exitDoctype(Doctype node) {
-    // TODO: implement exitDoctype
-  }
-
-  @override
-  void exitEach(Each node) {
-    // TODO: implement exitEach
-  }
-
-  @override
-  void exitEachOf(EachOf node) {
-    // TODO: implement exitEachOf
-  }
-
-  @override
-  void exitExtends(Extends node) {
-    // TODO: implement exitExtends
-  }
-
-  @override
-  void exitFileReference(FileReference node) {
-    // TODO: implement exitFileReference
-  }
-
-  @override
-  void exitFilter(Filter node) {
-    // TODO: implement exitFilter
-  }
-
-  @override
-  void exitInclude(Include node) {
-    // TODO: implement exitInclude
-  }
-
-  @override
-  void exitIncludeFilter(IncludeFilter node) {
-    // TODO: implement exitIncludeFilter
-  }
-
-  @override
-  void exitInterpolatedTag(InterpolatedTag node) {
-    // TODO: implement exitInterpolatedTag
-  }
-
-  @override
-  void exitMixin(Mixin node) {
-    // TODO: implement exitMixin
-  }
-
-  @override
-  void exitMixinBlock(MixinBlock node) {
-    // TODO: implement exitMixinBlock
-  }
-
-  @override
-  void exitNamedBlock(NamedBlock node) {
-    // TODO: implement exitNamedBlock
-  }
-
-  @override
-  void exitRawInclude(RawInclude node) {
-    // TODO: implement exitRawInclude
-  }
-
-  @override
-  void exitTag(Tag node) {
-    // TODO: implement exitTag
-  }
-
-  @override
-  void exitText(Text node) {
-    // TODO: implement exitText
-  }
-
-  @override
-  void exitWhen(When node) {
-    // TODO: implement exitWhen
-  }
-
-  @override
-  void exitWhile(While node) {
-    // TODO: implement exitWhile
+  bool visitText(Text node) {
+    output.write(node.text);
+    return true;
   }
 }

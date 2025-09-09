@@ -72,6 +72,7 @@ class Parser {
   final SourceFile file;
   FileSpan last;
   int _inMixin = 0;
+  
 
   Parser(List<Token> tokens, this.file) : tokens = TokenStream(tokens), last = file.location(0).pointSpan();
   factory Parser.fromLexer(Lexer lexer) => Parser(lexer.getTokens(), lexer.file);
@@ -518,7 +519,7 @@ class Parser {
             currentNode = Text(peek.span, peek.span.text, isHtml: true);
             nodes.add(currentNode);
           } else {
-            currentNode.val = '${currentNode.val!}\n${peek.span.text}';
+            currentNode.text = '${currentNode.text}\n${peek.span.text}';
           }
 
         case IndentToken():
@@ -529,7 +530,7 @@ class Parser {
                 currentNode = Text(peek.span, peek.span.text, isHtml: true);
                 nodes.add(currentNode);
               } else {
-                currentNode.val = '${currentNode.val!}\n${peek.span.text}';
+                currentNode.text = '${currentNode.text}\n${peek.span.text}';
               }
             } else {
               currentNode = null;
@@ -554,7 +555,7 @@ class Parser {
 
   Node _parseDot() {
     final tok = tokens.expect<DotToken>('.');
-    return _parseTextBlock() ?? Text(tok.span, null);
+    return _parseTextBlock() ?? Text(tok.span, '');
   }
 
   Node _parseEach() {
